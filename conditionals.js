@@ -1,3 +1,4 @@
+/* global $ */
 let nlp = window.nlp_compromise;
 
 function capitalize(string){
