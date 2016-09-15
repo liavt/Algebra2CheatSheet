@@ -26,4 +26,18 @@ $(document).ready(function(){
         
         $('#combin-result').html(result+' '+$('#combin-type option:selected').html().toLowerCase()+'s');
     });
+    
+    $('#fact-submit').click(function(){
+        var input = $('#fact-input').val();
+        
+        var result = '';
+        if(input<=0){
+            result = 'Number must be greater than 0';
+        }else{
+            result = input+'! = '+fact(Number(input));
+        }
+        
+        $('#fact-result').html(result);
+        
+    });
 });
