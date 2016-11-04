@@ -407,10 +407,8 @@ function tokenize(input){
     
     pushToken();
     
-    //negative number
-    if(out[0]===["-",STATES.OPERATOR]){
-        out[1] = ["-"+out[1][0],out[1][1]];
-        out.shift();
+    if(out[0][1]==STATES.OPERATOR&&out[0][0]=="-"){
+        out.splice(0,2,["-"+out[1][0],out[1][1]]);
     }
     
     return out;
@@ -421,7 +419,17 @@ function evaluateParens(token){
     
     var result = evaluate(expression);
     
-    return result;
+    if(result.length==1){
+        return result[0];
+    }else{
+        var joinedExpression = "";
+        
+        for(var i = 0;i<result.length;++i){
+            joinedExpression += result[i][0];
+        }
+        
+        return joinedExpression;
+    }
 }
 
 function evaluateFunction(token){
@@ -458,9 +466,7 @@ function evaluate(input){
     for(var i = 0;i<tokens.length;++i){
         if(tokens[i][1]==STATES.PARENS){
             var result = evaluateParens(tokens[i]);
-            console.log("Result: ");
-            console.log([i,1].concat(evaluateParens(tokens[i])));
-            tokens.splice.apply([i,1].concat(result));
+            tokens[i] = result;
             pushProof("Evaluated parenthesis",tokens);
         }else if(tokens[i][1]==STATES.FUNCTION){
             tokens[i] = evaluateFunction(tokens[i],tokens);
