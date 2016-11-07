@@ -10,15 +10,21 @@ var OPERATORS = [
             return [[0, STATES.NUMBER],"Anything modulo 0 is 0"];
         }else if(right[0]==1){
             return [[0, STATES.NUMBER],"Anything modulo 1 is 0"];
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [[Number(left[0])%Number(right[0]),STATES.NUMBER],"Definition of modulo"];
+        }else{
+            return [[left[0]+"%"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [[Number(left[0])%Number(right[0]),STATES.NUMBER],"Definition of modulo"];
     }], ["^",function(left,right){
         if(right[0]==0){
             return [[1, STATES.NUMBER],"Anything to the power of 0 is 1"];
         }else if(right[0]==1){
             return [left, "Anything to the power of 1 is itself"];
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [[Math.pow(Number(left[0]),Number(right[0])),STATES.NUMBER],"Definition of exponents"];
+        }else{
+            return [[left[0]+"^"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [[Math.pow(Number(left[0]),Number(right[0])),STATES.NUMBER],"Definition of exponents"];
     }], ["*",function(left,right){
         if(right[0]==0||left[0]==0){
             return [[0,STATES.NUMBER],"Property of 0"];
@@ -26,8 +32,26 @@ var OPERATORS = [
             return [left,"Multiplicative identity property"];
         }else if(left[0]==1){
             return [right,"Multiplicative identity property"];
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [[Number(left[0])*Number(right[0]),STATES.NUMBER],"Definition of multiplication"];
+        }else if(right[1]==STATES.PARENS){
+            var tokens = tokenize(openParens(right[0]));
+            var result = "(";
+            
+            for(var i = 0;i<tokens.length;++i){
+                if(tokens[i][1]!=STATES.OPERATOR){
+                    result += "("+left[0]+"*"+tokens[i][0]+")";
+                }else{
+                    result += tokens[i][0];
+                }
+            }
+            
+            result += ")";
+            
+            return [[result,STATES.PARENS],"Distributive Property"];
+        }else{
+            return [[left[0]+"*"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [[Number(left[0])*Number(right[0]),STATES.NUMBER],"Definition of multiplication"];
     }], ["/",function(left,right){
         if(left==right){
             return [[1, STATES.NUMBER],"Anything divided by itself is 1"]; 
@@ -35,22 +59,31 @@ var OPERATORS = [
             return [[0, STATES.NUMBER],"Property of 0"];
         }else if(right[0]==0){
             throw "Can\'t divide by 0!";
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [[Number(left[0])/Number(right[0]),STATES.NUMBER],"Definition of division"];
+        }else{
+            return [[left[0]+"/"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [[Number(left[0])/Number(right[0]),STATES.NUMBER],"Definition of division"];
     }], ["+",function(left,right){
         if(left[0]==0){
             return [right,"Additive identity property"];
         }else if(right[0]==0){
             return [left,"Additive identity property"];
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [[Number(left[0])+Number(right[0]),STATES.NUMBER],"Definition of addition"];
+        }else{
+            return [[left[0]+"+"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [[Number(left[0])+Number(right[0]),STATES.NUMBER],"Definition of addition"];
     }], ["-",function(left,right){
         if(right[0]==0){
             return [left,"Property of 0"];
         }else if(left[0]===right[0]){
             return [[0,STATES.NUMBER],"Additive inverse property"];
+        }else if(right[1]==STATES.NUMBER&&left[1]==STATES.NUMBER){
+            return [Number(left[0])-Number(right[0]),STATES.NUMBER];
+        }else{
+            return [[left[0]+"-"+right[0],STATES.PARENS],"Cannot perform operation"];
         }
-        return [Number(left[0])-Number(right[0]),STATES.NUMBER];
     }], ["=",function(left,right){
         if(left[1]==STATES.VARIABLE){
             return [right,"Definition of equal"];
@@ -220,7 +253,7 @@ var FUNCTIONS = [
     ["rad",function(args){
         if(!args)throw "rad requires an argument";
         if(args[1]!=STATES.NUMBER){
-            return ["("+args[0]+"*(PI()/180)",STATES.PARENS];
+            return ["("+args[0]+"*(PI()/180))",STATES.PARENS];
         }
         return [Number(args[0])*(Math.PI/180),STATES.NUMBER];
     },"Converts an angle to radians"],
@@ -304,7 +337,7 @@ function isSpace(str){
 function tokenize(input){
     var out = [];
     
-    var state =STATES.PROBING;
+    var state = STATES.PROBING;
     
     var token = "";
     
@@ -407,6 +440,7 @@ function tokenize(input){
     
     pushToken();
     
+    //negatives
     if(out[0][1]==STATES.OPERATOR&&out[0][0]=="-"){
         out.splice(0,2,["-"+out[1][0],out[1][1]]);
     }
@@ -415,11 +449,14 @@ function tokenize(input){
 }
 
 function evaluateParens(token){
-    var expression = token[0].substr(1,token[0].length-2);
+    var expression = openParens(token[0]);
     
-    var result = evaluate(expression);
-    
+    var result = evaluateTokens(tokenize(expression));
+
     if(result.length==1){
+        if(result[0][0]==expression){
+            return token;
+        }
         return result[0];
     }else{
         var joinedExpression = "";
@@ -428,40 +465,23 @@ function evaluateParens(token){
             joinedExpression += result[i][0];
         }
         
+        if(joinedExpression===expression){
+            return token;
+        }
         return joinedExpression;
     }
 }
 
-function evaluateFunction(token){
-    var name = "";
-    var args = [];
-    
-    
-    for(var i = 0;i<token[0].length;++i){
-        if(token[0][i]==='('){
-            name = token[0].substr(0,i);
-            args = token[0].substr(i+1).slice(0,-1).split(",");
-            for(var iter = 0;iter<args.length;++iter){
-                if(args[iter]&&args[iter]!=""){
-                    args[iter] = evaluate(args[iter])[0];//it returns an array of tokens, but it should only ever return 1 token, so we access the first
-                }
-            }
-            break;
-        }
+function openParens(input){
+    if(input[0]=='('){
+        return input.substr(1,input.length-2);
+    }else{
+        return input;
     }
-    
-    for(var i = 0;i<FUNCTIONS.length;++i){
-        if(name===FUNCTIONS[i][0]){
-            return FUNCTIONS[i][1].apply(this,args);
-        }
-    }
-    
-    
-    return token;
 }
 
-function evaluate(input){
-    var tokens = tokenize(input);
+function evaluateTokens(input){
+    var tokens = input;
     
     for(var i = 0;i<tokens.length;++i){
         if(tokens[i][1]==STATES.PARENS){
@@ -498,7 +518,68 @@ function evaluate(input){
         }
     }
     
-    return tokens;
+    return input;
+}
+
+function evaluateFunction(token){
+    var name = "";
+    var args = [];
+    
+    var tokenName = token[0];
+    
+    var negative = false;
+    
+    if(tokenName[0] === '-'){
+        negative = true;
+        tokenName = tokenName.substr(1);
+    }
+    
+    for(var i = 0;i<tokenName.length;++i){
+        if(tokenName[i]==='('){
+            name = tokenName.substr(0,i);
+            args = tokenName.substr(i+1).slice(0,-1).split(",");
+            for(var iter = 0;iter<args.length;++iter){
+                if(args[iter]&&args[iter]!=""){
+                    args[iter] = evaluateTokens(tokenize(args[iter]))[0];//it returns an array of tokens, but it should only ever return 1 token, so we access the first
+                }
+            }
+            break;
+        }
+    }
+    
+    for(var i = 0;i<FUNCTIONS.length;++i){
+        if(name===FUNCTIONS[i][0]){
+            var result = (FUNCTIONS[i][1].apply(this,args));
+            if(negative){
+                if(isNaN(result[0])){
+                    result[0] = '-'+String(result[0]);
+                }else{
+                    result[0] = -result[0];
+                }
+            }
+            return result;
+        }
+    }
+    
+    
+    return token;
+}
+
+function evaluate(input){
+    var tokens = tokenize(input);
+    
+    var result = evaluateTokens(tokens);
+    
+    while(true){
+        var simplifiedResult = evaluateTokens(result);
+        console.log(result);
+        /*if(simplifiedResult != result){
+            result = simplifiedResult;
+        }else{
+            return result;
+        }*/
+        return result;
+    }
 }
 
 $(function(){
@@ -514,6 +595,24 @@ $(function(){
         }
         
         $("#result").html(result);
+    });
+    
+    $("#help").click(function(){
+        $("#result").html("Type in a math expression and this calculator will try to solve it as well as possible.<br>Variables are seldom supported.<br>You can use functions and parenthesis. You can also use mathmatical operators: +, -, *,/ for the basic operations. You can use ^ for exponents and % for modulo. Order of operations is supported.");
+    });
+    
+    $("#formulas").click(function(){
+        var result = "<h5>Formulas</h5>";
+        result += "Here are some formulas to test this out with. <i>It doesn't support variable equations however.</i><br>";
+        result += "<b>Newton's Law of Cooling:</b> f = s + (o - s) * EC() ^ (-k*t)<br>";
+        result += "<b>Continuous Groth/Decay:</b> f = o * EC() ^ (k * t)<br>";
+        result += "<b>General Growth/Decay:</b> f = s + (o - s) * EC() ^ (-k*t)<br>";
+        result += "<b>Decibel Formula:</b> f = 10 * log( i / t )<br>";
+        result += "<b>pH Formula:</b> p = -log( h )<br>";
+        result += "<b>Carbon Decay:</b> t = ( ln( c / 100 ) / -0.693 ) * 5730<br>";
+        
+        $("#result").html(result);
+
     });
     
     $("#submit").click(function(){
